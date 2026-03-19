@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Star Trek Fleet Command — Command Your Destiny</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ═══════════════════════════════════
+       DESIGN SYSTEM — Deep Space HUD
+    ═══════════════════════════════════ */
+    :root {
+      --blue:    #00c8ff;
+      --blue2:   #0070cc;
+      --gold:    #f0a020;
+      --red:     #ff3344;
+      --dark:    #03050f;
+      --dark2:   #060c1e;
+      --title:   'Orbitron', sans-serif;
+      --body:    'Exo 2', sans-serif;
+    }
+
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+    html, body {
+      width:100vw; height:100vh;
+      background:var(--dark);
+      font-family:var(--body);
+      overflow:hidden;
+      color:#fff;
+    }
+
+    /* ═══════════════════════════════════
+       STAR FIELD CANVAS
+    ═══════════════════════════════════ */
+    #stars {
+      position:fixed; inset:0; z-index:0;
+      pointer-events:none;
+    }
+
+    /* ═══════════════════════════════════
+       VIDEO BG
+    ═══════════════════════════════════ */
+    .vbg {
+      position:fixed; inset:0; z-index:1;
+      pointer-events:none;
+    }
+    #bgVideo {
+      width:100%; height:100%;
+      object-fit:cover;
+      opacity:0.2;
+      filter:saturate(0.5) hue-rotate(10deg);
+    }
+    .vbg-overlay {
+      position:absolute; inset:0;
+      background:
+        radial-gradient(ellipse 100% 80% at 50% 0%, rgba(0,40,100,0.3) 0%, transparent 60%),
+        linear-gradient(180deg,
+          rgba(3,5,15,0.7) 0%,
+          rgba(3,5,15,0.3) 30%,
+          rgba(3,5,15,0.6) 70%,
+          rgba(3,5,15,0.95) 100%);
+    }
+
+    /* ═══════════════════════════════════
+       SCANLINES
+    ═══════════════════════════════════ */
+    .scanlines {
+      position:fixed; inset:0; z-index:2;
+      pointer-events:none;
+      background:repeating-linear-gradient(
+        0deg,
+        transparent, transparent 3px,
+        rgba(0,180,255,0.025) 3px, rgba(0,180,255,0.025) 4px
+      );
+    }
+
+    /* ═══════════════════════════════════
+       HEADER
+    ═══════════════════════════════════ */
+    .hdr {
+      position:fixed; top:0; left:0; right:0;
+      z-index:200;
+      height:62px;
+      display:flex; align-items:center;
+      justify-content:space-between;
+      padding:0 36px;
+      background:rgba(3,5,15,0.9);
+      backdrop-filter:blur(16px);
+      border-bottom:1px solid rgba(0,200,255,0.15);
+    }
+
+    /* HUD corner accents on header */
+    .hdr::before,
+    .hdr::after {
+      content:'';
+      position:absolute;
+      width:16px; height:16px;
+    }
+    .hdr::before {
+      top:0; left:0;
+      border-top:2px solid var(--blue);
+      border-left:2px solid var(--blue);
+    }
+    .hdr::after {
+      top:0; right:0;
+      border-top:2px solid var(--blue);
+      border-right:2px solid var(--blue);
+    }
+
+    .hdr-left { display:flex; align-items:center; gap:16px; }
+
+    .hdr-logo {
+      height:42px; object-fit:contain;
+      filter:drop-shadow(0 0 10px rgba(0,200,255,0.5));
+    }
+
+    .desktop-badge {
+      display:flex; align-items:center; gap:5px;
+      padding:3px 10px;
+      border:1px solid rgba(0,200,255,0.3);
+      border-radius:2px;
+      font-family:var(--title);
+      font-size:0.52rem; font-weight:700;
+      letter-spacing:2px; text-transform:uppercase;
+      color:rgba(0,200,255,0.6);
+    }
+    .desktop-badge svg { width:12px; height:12px; fill:rgba(0,200,255,0.6); }
+
+    .hdr-cta {
+      position:relative;
+      padding:9px 24px;
+      background:transparent;
+      border:1px solid var(--blue);
+      border-radius:2px;
+      font-family:var(--title);
+      font-size:0.68rem; font-weight:700;
+      letter-spacing:3px; text-transform:uppercase;
+      color:var(--blue);
+      cursor:pointer;
+      overflow:hidden;
+      transition:color 0.3s, box-shadow 0.3s;
+      box-shadow:0 0 12px rgba(0,200,255,0.2), inset 0 0 12px rgba(0,200,255,0.05);
+    }
+    .hdr-cta::before {
+      content:'';
+      position:absolute; inset:0;
+      background:var(--blue);
+      transform:scaleX(0);
+      transform-origin:left;
+      transition:transform 0.3s ease;
+      z-index:-1;
+    }
+    .hdr-cta:hover::before { transform:scaleX(1); }
+    .hdr-cta:hover {
+      color:#000;
+      box-shadow:0 0 30px rgba(0,200,255,0.6);
+    }
+
+    /* ═══════════════════════════════════
+       PAGE LAYOUT — No scroll
+    ═══════════════════════════════════ */
+    .page {
+      position:relative; z-index:10;
+      height:100vh;
+      display:grid;
+      grid-template-rows:62px 1fr auto;
+      grid-template-columns:1fr 1fr;
+      grid-template-areas:
+        "hdr-space hdr-space"
+        "left      right"
+        "bottombar bottombar";
+    }
+
+    .hdr-space { grid-area:hdr-space; }
+
+    /* ═══════════════════════════════════
+       LEFT COLUMN — Text
+    ═══════════════════════════════════ */
+    .left-col {
+      grid-area:left;
+      display:flex; flex-direction:column;
+      justify-content:center;
+      padding:20px 32px 20px 48px;
+      gap:14px;
+    }
+
+    /* HUD status line */
+    .hud-line {
+      display:flex; align-items:center; gap:10px;
+      animation:fadeLeft 0.7s ease 0.1s both;
+    }
+    .hud-dot {
+      width:6px; height:6px; border-radius:50%;
+      background:var(--blue);
+      box-shadow:0 0 8px var(--blue);
+      animation:blink 1.4s ease infinite;
+    }
+    .hud-text {
+      font-family:var(--title);
+      font-size:0.58rem; font-weight:400;
+      letter-spacing:4px; text-transform:uppercase;
+      color:rgba(0,200,255,0.55);
+    }
+
+    @keyframes blink {
+      0%,100% { opacity:1; box-shadow:0 0 8px var(--blue); }
+      50%      { opacity:0.3; box-shadow:none; }
+    }
+
+    /* Title */
+    .title-main {
+      font-family:var(--title);
+      font-size:clamp(1.6rem, 3.2vw, 3rem);
+      font-weight:900;
+      line-height:1.0;
+      letter-spacing:1px;
+      color:#fff;
+      text-shadow:
+        0 0 30px rgba(0,200,255,0.4),
+        0 0 80px rgba(0,200,255,0.15);
+      animation:fadeLeft 0.7s ease 0.15s both;
+    }
+    .title-main em {
+      font-style:normal;
+      color:var(--blue);
+      text-shadow:0 0 20px rgba(0,200,255,0.8), 0 0 50px rgba(0,200,255,0.3);
+    }
+
+    .title-sub {
+      font-size:clamp(0.85rem, 1.5vw, 1.05rem);
+      font-weight:300; letter-spacing:2px;
+      color:rgba(255,255,255,0.4);
+      text-transform:uppercase;
+      animation:fadeLeft 0.7s ease 0.2s both;
+    }
+
+    /* Divider */
+    .hud-divider {
+      display:flex; align-items:center; gap:10px;
+      animation:fadeLeft 0.7s ease 0.25s both;
+    }
+    .hud-divider::before {
+      content:'';
+      display:block;
+      width:30px; height:1px;
+      background:linear-gradient(to right, var(--blue), transparent);
+    }
+    .hud-divider-text {
+      font-family:var(--title);
+      font-size:0.52rem; font-weight:400;
+      letter-spacing:3px; text-transform:uppercase;
+      color:rgba(0,200,255,0.4);
+    }
+    .hud-divider::after {
+      content:'';
+      flex:1; height:1px;
+      background:linear-gradient(to right, rgba(0,200,255,0.2), transparent);
+    }
+
+    /* Bullets */
+    .bullets {
+      display:flex; flex-direction:column; gap:7px;
+      animation:fadeLeft 0.8s ease 0.3s both;
+    }
+
+    .bullet {
+      display:flex; align-items:flex-start; gap:12px;
+      padding:9px 14px;
+      background:rgba(0,200,255,0.03);
+      border:1px solid rgba(0,200,255,0.08);
+      border-left:2px solid rgba(0,200,255,0.4);
+      border-radius:0 4px 4px 0;
+      transition:background 0.3s, border-color 0.3s;
+    }
+    .bullet:hover {
+      background:rgba(0,200,255,0.07);
+      border-color:rgba(0,200,255,0.5);
+      border-left-color:var(--blue);
+    }
+
+    .bullet-icon {
+      font-size:1rem; flex-shrink:0;
+      filter:drop-shadow(0 0 6px rgba(0,200,255,0.6));
+      margin-top:1px;
+    }
+
+    .bullet-text {
+      font-size:clamp(0.78rem, 1.3vw, 0.9rem);
+      font-weight:400; line-height:1.4;
+      color:rgba(255,255,255,0.75);
+    }
+    .bullet-text strong {
+      color:var(--blue); font-weight:700;
+    }
+
+    /* Desktop warning */
+    .desktop-warn {
+      display:flex; align-items:center; gap:8px;
+      padding:7px 12px;
+      background:rgba(0,200,255,0.05);
+      border:1px solid rgba(0,200,255,0.18);
+      border-radius:2px;
+      font-family:var(--title);
+      font-size:0.58rem; font-weight:700;
+      letter-spacing:2px; text-transform:uppercase;
+      color:rgba(0,200,255,0.65);
+      animation:fadeLeft 0.8s ease 0.4s both;
+    }
+    .desktop-warn svg { width:13px; height:13px; fill:rgba(0,200,255,0.65); flex-shrink:0; }
+
+    /* ═══════════════════════════════════
+       RIGHT COLUMN — Hero Image
+    ═══════════════════════════════════ */
+    .right-col {
+      grid-area:right;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:20px 40px 20px 20px;
+      animation:fadeRight 0.9s ease 0.3s both;
+    }
+
+    /* HUD Frame wrapper */
+    .hero-frame {
+      position:relative;
+      width:100%;
+      max-width:560px;
+    }
+
+    /* Main image container */
+    .hero-img-wrap {
+      position:relative;
+      width:100%;
+      /* Hexagonal-inspired clip */
+      clip-path:polygon(
+        8px 0%,
+        calc(100% - 8px) 0%,
+        100% 8px,
+        100% calc(100% - 24px),
+        calc(100% - 24px) 100%,
+        24px 100%,
+        0% calc(100% - 8px),
+        0% 8px
+      );
+      overflow:hidden;
+      aspect-ratio:16/10;
+    }
+
+    .hero-img {
+      width:100%; height:100%;
+      object-fit:cover;
+      display:block;
+      filter:saturate(0.9) brightness(0.95);
+      transition:transform 6s ease, filter 0.5s ease;
+    }
+
+    .hero-frame:hover .hero-img {
+      transform:scale(1.04);
+      filter:saturate(1.1) brightness(1.05);
+    }
+
+    /* Inner glow over image */
+    .hero-inner-glow {
+      position:absolute; inset:0;
+      background:
+        linear-gradient(135deg, rgba(0,100,200,0.15) 0%, transparent 50%),
+        linear-gradient(to bottom, transparent 50%, rgba(3,5,15,0.6) 100%);
+      pointer-events:none; z-index:2;
+    }
+
+    /* HUD corner decorations */
+    .hud-corner {
+      position:absolute;
+      width:22px; height:22px;
+      z-index:5;
+    }
+    .hud-corner.tl { top:-2px; left:-2px; border-top:2px solid var(--blue); border-left:2px solid var(--blue); }
+    .hud-corner.tr { top:-2px; right:-2px; border-top:2px solid var(--blue); border-right:2px solid var(--blue); }
+    .hud-corner.bl { bottom:-2px; left:-2px; border-bottom:2px solid var(--blue); border-left:2px solid var(--blue); }
+    .hud-corner.br { bottom:-2px; right:-2px; border-bottom:2px solid var(--blue); border-right:2px solid var(--blue); }
+
+    /* Animated scanning line */
+    .scan-line {
+      position:absolute;
+      top:0; left:0; right:0;
+      height:2px;
+      background:linear-gradient(to right,
+        transparent, rgba(0,200,255,0.6), transparent);
+      z-index:6;
+      animation:scanDown 4s ease-in-out infinite;
+    }
+    @keyframes scanDown {
+      0%   { top:0%; opacity:0; }
+      5%   { opacity:1; }
+      95%  { opacity:0.6; }
+      100% { top:100%; opacity:0; }
+    }
+
+    /* HUD data tags floating over image */
+    .hud-tag {
+      position:absolute;
+      font-family:var(--title);
+      font-size:0.5rem; font-weight:400;
+      letter-spacing:2px; text-transform:uppercase;
+      color:rgba(0,200,255,0.55);
+      z-index:7;
+      white-space:nowrap;
+    }
+    .hud-tag::before {
+      content:'';
+      display:inline-block;
+      width:4px; height:4px;
+      border-radius:50%;
+      background:var(--blue);
+      box-shadow:0 0 6px var(--blue);
+      margin-right:5px;
+      vertical-align:middle;
+      animation:blink 1.8s ease infinite;
+    }
+    .hud-tag.t1 { top:10px; left:16px; }
+    .hud-tag.t2 { top:10px; right:16px; text-align:right; }
+    .hud-tag.t3 { bottom:14px; left:16px; }
+    .hud-tag.t4 { bottom:14px; right:16px; text-align:right; }
+
+    /* Side accent bars */
+    .hero-bar-left,
+    .hero-bar-right {
+      position:absolute;
+      top:15%; bottom:15%;
+      width:2px;
+      z-index:5;
+    }
+    .hero-bar-left {
+      left:-8px;
+      background:linear-gradient(to bottom,
+        transparent, var(--blue), transparent);
+      box-shadow:0 0 10px var(--blue);
+    }
+    .hero-bar-right {
+      right:-8px;
+      background:linear-gradient(to bottom,
+        transparent, rgba(0,200,255,0.4), transparent);
+    }
+
+    /* Bottom glow line */
+    .hero-glow-line {
+      position:absolute;
+      bottom:-4px; left:10%; right:10%;
+      height:1px;
+      background:linear-gradient(to right,
+        transparent, var(--blue), transparent);
+      box-shadow:0 0 20px rgba(0,200,255,0.6);
+      z-index:5;
+    }
+
+    /* ═══════════════════════════════════
+       BOTTOM BAR — Big CTA
+    ═══════════════════════════════════ */
+    .bottom-bar {
+      grid-area:bottombar;
+      position:relative;
+      display:flex; align-items:center;
+      justify-content:center; gap:40px;
+      padding:12px 40px;
+      background:rgba(3,5,15,0.95);
+      backdrop-filter:blur(14px);
+      border-top:1px solid rgba(0,200,255,0.12);
+      animation:fadeUp 0.8s ease 0.6s both;
+    }
+
+    /* HUD corner accents bottom bar */
+    .bottom-bar::before,
+    .bottom-bar::after {
+      content:'';
+      position:absolute;
+      width:14px; height:14px;
+    }
+    .bottom-bar::before {
+      bottom:0; left:0;
+      border-bottom:2px solid rgba(0,200,255,0.5);
+      border-left:2px solid rgba(0,200,255,0.5);
+    }
+    .bottom-bar::after {
+      bottom:0; right:0;
+      border-bottom:2px solid rgba(0,200,255,0.5);
+      border-right:2px solid rgba(0,200,255,0.5);
+    }
+
+    .stat {
+      display:flex; flex-direction:column;
+      align-items:center; gap:2px;
+      flex-shrink:0;
+    }
+    .stat-val {
+      font-family:var(--title);
+      font-size:clamp(0.9rem, 1.8vw, 1.2rem);
+      font-weight:700; color:var(--blue);
+      text-shadow:0 0 10px rgba(0,200,255,0.5);
+    }
+    .stat-label {
+      font-size:0.58rem; font-weight:400;
+      letter-spacing:2px; text-transform:uppercase;
+      color:rgba(255,255,255,0.3);
+    }
+
+    .bar-sep {
+      width:1px; height:30px;
+      background:rgba(0,200,255,0.15);
+      flex-shrink:0;
+    }
+
+    /* ── BIG ANIMATED CTA ── */
+    .main-cta {
+      position:relative;
+      padding:16px 52px;
+      background:transparent;
+      border:1px solid var(--blue);
+      border-radius:2px;
+      font-family:var(--title);
+      font-size:clamp(0.78rem, 1.5vw, 1rem);
+      font-weight:700; letter-spacing:4px;
+      text-transform:uppercase;
+      color:#fff;
+      cursor:pointer;
+      overflow:hidden;
+      transition:color 0.3s, box-shadow 0.3s, transform 0.2s;
+      white-space:nowrap;
+      /* Pulsing border glow */
+      animation:ctaBorderPulse 2.4s ease infinite;
+    }
+
+    /* Fill sweep on hover */
+    .main-cta::before {
+      content:'';
+      position:absolute; inset:0;
+      background:var(--blue);
+      transform:scaleX(0) skewX(-6deg);
+      transform-origin:left;
+      transition:transform 0.35s ease;
+      z-index:0;
+    }
+
+    /* Persistent shimmer line */
+    .main-cta::after {
+      content:'';
+      position:absolute;
+      top:0; left:-100%;
+      width:40%; height:100%;
+      background:linear-gradient(
+        105deg,
+        transparent 20%,
+        rgba(0,200,255,0.35) 50%,
+        transparent 80%
+      );
+      animation:ctaShimmer 3s ease-in-out infinite;
+      z-index:1;
+    }
+
+    .main-cta span { position:relative; z-index:2; }
+
+    .main-cta:hover::before { transform:scaleX(1) skewX(0deg); }
+    .main-cta:hover {
+      color:#000;
+      box-shadow:
+        0 0 60px rgba(0,200,255,0.8),
+        0 0 120px rgba(0,200,255,0.3),
+        inset 0 0 30px rgba(0,200,255,0.2);
+      transform:scale(1.04) translateY(-1px);
+    }
+
+    @keyframes ctaBorderPulse {
+      0%,100% { box-shadow:0 0 15px rgba(0,200,255,0.3), inset 0 0 8px rgba(0,200,255,0.05); }
+      40%     { box-shadow:0 0 35px rgba(0,200,255,0.7), inset 0 0 20px rgba(0,200,255,0.1); }
+      70%     { box-shadow:0 0 10px rgba(0,200,255,0.2), inset 0 0 5px rgba(0,200,255,0.03); }
+    }
+
+    @keyframes ctaShimmer {
+      0%   { left:-100%; }
+      55%  { left:140%; }
+      100% { left:140%; }
+    }
+
+    /* ═══════════════════════════════════
+       ANIMATIONS
+    ═══════════════════════════════════ */
+    @keyframes fadeLeft {
+      from { opacity:0; transform:translateX(-22px); }
+      to   { opacity:1; transform:translateX(0); }
+    }
+    @keyframes fadeRight {
+      from { opacity:0; transform:translateX(22px); }
+      to   { opacity:1; transform:translateX(0); }
+    }
+    @keyframes fadeUp {
+      from { opacity:0; transform:translateY(16px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+
+    /* ═══════════════════════════════════
+       MOBILE FALLBACK
+    ═══════════════════════════════════ */
+    @media (max-width:860px) {
+      html, body { overflow-y:auto; }
+      .page {
+        grid-template-columns:1fr;
+        grid-template-rows:62px auto auto auto;
+        grid-template-areas:
+          "hdr-space"
+          "right"
+          "left"
+          "bottombar";
+        height:auto;
+      }
+      .left-col { padding:20px; }
+      .right-col { padding:20px; }
+      .bottom-bar { flex-wrap:wrap; gap:14px; padding:14px 20px; }
+      .stat { display:none; }
+      .bar-sep { display:none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- STAR FIELD -->
+  <canvas id="stars"></canvas>
+
+  <!-- VIDEO BG -->
+  <div class="vbg">
+    <video autoplay muted loop playsinline id="bgVideo">
+      <source src="https://startrikcommand.gamezof.com/video-bg.mp4" type="video/mp4">
+    </video>
+    <div class="vbg-overlay"></div>
+  </div>
+
+  <!-- SCANLINES -->
+  <div class="scanlines"></div>
+
+  <!-- HEADER -->
+  <header class="hdr">
+    <div class="hdr-left">
+      <img src="https://startrikcommand.gamezof.com/logo.webp"
+           alt="Star Trek Fleet Command"
+           class="hdr-logo"
+           onerror="this.style.display='none'">
+      <div class="desktop-badge">
+        <svg viewBox="0 0 24 24"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+        Desktop Only
+      </div>
+    </div>
+    <button class="hdr-cta" id="hdrCta">
+      <span>▶ PLAY FREE</span>
+    </button>
+  </header>
+
+  <!-- PAGE -->
+  <div class="page">
+
+    <div class="hdr-space"></div>
+
+    <!-- LEFT: TEXT -->
+    <div class="left-col">
+
+      <div class="hud-line">
+        <div class="hud-dot"></div>
+        <span class="hud-text">Starfleet Command — Transmission Active</span>
+      </div>
+
+      <h1 class="title-main">
+        THE GALAXY<br>IS <em>YOURS</em><br>TO COMMAND
+      </h1>
+
+      <p class="title-sub">Kirk. Spock. Nero. Your fleet awaits, Commander.</p>
+
+      <div class="hud-divider">
+        <span class="hud-divider-text">Mission Briefing</span>
+      </div>
+
+      <div class="bullets">
+        <div class="bullet">
+          <span class="bullet-icon">🚀</span>
+          <span class="bullet-text"><strong>Build & Command Epic Fleets</strong> — Construct the Enterprise, Klingon Bird of Prey, Romulan Warbird and dozens of iconic ships.</span>
+        </div>
+        <div class="bullet">
+          <span class="bullet-icon">🖖</span>
+          <span class="bullet-text"><strong>Recruit Legendary Officers</strong> — Assemble Kirk, Spock, Uhura and 55 years of Star Trek legends to lead your crew into battle.</span>
+        </div>
+        <div class="bullet">
+          <span class="bullet-icon">🌌</span>
+          <span class="bullet-text"><strong>Explore a Living Galaxy</strong> — Navigate a vast dynamic universe. Forge alliances, crush enemies, expand your starbase across the quadrant.</span>
+        </div>
+        <div class="bullet">
+          <span class="bullet-icon">🏆</span>
+          <span class="bullet-text"><strong>Award-Winning Strategy MMO</strong> — 3× Webby Award winner. Millions of commanders. One galaxy. Who will dominate it?</span>
+        </div>
+      </div>
+
+      <div class="desktop-warn">
+        <svg viewBox="0 0 24 24"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+        ⚠ &nbsp; Available on Desktop PC Only
+      </div>
+
+    </div>
+
+    <!-- RIGHT: HERO IMAGE IN HUD FRAME -->
+    <div class="right-col">
+      <div class="hero-frame">
+
+        <!-- Corner accents -->
+        <div class="hud-corner tl"></div>
+        <div class="hud-corner tr"></div>
+        <div class="hud-corner bl"></div>
+        <div class="hud-corner br"></div>
+
+        <!-- Side bars -->
+        <div class="hero-bar-left"></div>
+        <div class="hero-bar-right"></div>
+
+        <!-- Bottom glow -->
+        <div class="hero-glow-line"></div>
+
+        <!-- Image -->
+        <div class="hero-img-wrap">
+          <img src="https://startrikcommand.gamezof.com/hero%20pic.webp"
+               alt="Star Trek Fleet Command"
+               class="hero-img"
+               onerror="this.style.opacity='0'">
+          <div class="hero-inner-glow"></div>
+          <div class="scan-line"></div>
+
+          <!-- HUD data tags -->
+          <div class="hud-tag t1">SECTOR 001 — ALPHA QUADRANT</div>
+          <div class="hud-tag t2">SHIELDS: ONLINE</div>
+          <div class="hud-tag t3">WARP DRIVE: ENGAGED</div>
+          <div class="hud-tag t4">CREW: READY</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- BOTTOM BAR -->
+    <div class="bottom-bar">
+
+      <div class="stat">
+        <span class="stat-val">55+</span>
+        <span class="stat-label">Years of Star Trek</span>
+      </div>
+
+      <div class="bar-sep"></div>
+
+      <div class="stat">
+        <span class="stat-val">3×</span>
+        <span class="stat-label">Webby Award Winner</span>
+      </div>
+
+      <div class="bar-sep"></div>
+
+      <button class="main-cta" id="mainCta">
+        <span>⚡ &nbsp; BEAM INTO THE GALAXY — PLAY FREE &nbsp; ⚡</span>
+      </button>
+
+      <div class="bar-sep"></div>
+
+      <div class="stat">
+        <span class="stat-val">100+</span>
+        <span class="stat-label">Iconic Ships</span>
+      </div>
+
+      <div class="bar-sep"></div>
+
+      <div class="stat">
+        <span class="stat-val">FREE</span>
+        <span class="stat-label">To Play Now</span>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+  (function() {
+
+    /* ─── AFFILIATE ─── */
+    var DEST   = 'https://to.wendiro.com/u?k=7d08dc16f674423b984ae4ca4b188d8a&via=15055';
+    var PARAMS = ['clickid','utm_source','utm_medium','utm_campaign','utm_content'];
+    function buildUrl() {
+      var url = new URL(DEST);
+      var q   = new URLSearchParams(window.location.search);
+      PARAMS.forEach(function(p){ if(q.get(p)) url.searchParams.set(p, q.get(p)); });
+      return url.toString();
+    }
+    function go() { window.location.href = buildUrl(); }
+
+    document.getElementById('hdrCta').addEventListener('click', go);
+    document.getElementById('mainCta').addEventListener('click', go);
+
+    /* ─── VIDEO FALLBACK ─── */
+    var v = document.getElementById('bgVideo');
+    if (v) v.addEventListener('error', function(){
+      document.querySelector('.vbg').style.background =
+        'radial-gradient(ellipse at 50% 0%, #001030 0%, #03050f 60%)';
+      v.style.display = 'none';
+    });
+
+    /* ─── STAR FIELD ─── */
+    var canvas = document.getElementById('stars');
+    var ctx    = canvas.getContext('2d');
+    var stars  = [];
+    var W, H;
+
+    function resize(){
+      W = canvas.width  = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    /* Generate stars */
+    for (var i = 0; i < 280; i++) {
+      stars.push({
+        x:    Math.random() * window.innerWidth,
+        y:    Math.random() * window.innerHeight,
+        r:    Math.random() * 1.4 + 0.2,
+        a:    Math.random() * 0.7 + 0.2,
+        speed:Math.random() * 0.015 + 0.003,
+        phase:Math.random() * Math.PI * 2
+      });
+    }
+
+    var t = 0;
+    function drawStars(){
+      ctx.clearRect(0, 0, W, H);
+      t += 0.008;
+      stars.forEach(function(s){
+        var alpha = s.a * (0.6 + 0.4 * Math.sin(t * s.speed * 60 + s.phase));
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,' + alpha + ')';
+        ctx.fill();
+      });
+
+      /* Occasional shooting star */
+      if (Math.random() < 0.003) {
+        spawnShooter();
+      }
+      shooters.forEach(function(s, i){
+        s.x += s.vx; s.y += s.vy; s.life--;
+        var a = s.life / s.maxLife;
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(s.x - s.vx * 8, s.y - s.vy * 8);
+        ctx.strokeStyle = 'rgba(0,200,255,' + a * 0.7 + ')';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        if (s.life <= 0) shooters.splice(i, 1);
+      });
+
+      requestAnimationFrame(drawStars);
+    }
+
+    var shooters = [];
+    function spawnShooter(){
+      shooters.push({
+        x: Math.random() * W,
+        y: Math.random() * H * 0.5,
+        vx: 4 + Math.random() * 4,
+        vy: 1 + Math.random() * 2,
+        life: 30 + Math.random() * 20,
+        maxLife: 50
+      });
+    }
+
+    drawStars();
+
+  })();
+  </script>
+
+</body>
+</html>
